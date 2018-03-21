@@ -14,9 +14,12 @@
 # limitations under the License.
 
 require "fluent/plugin/output"
-require "date"
+require "time"
 require "base64"
 require "openssl"
+require "uri"
+require "net/https"
+require "json"
 
 module Fluent
   module Plugin
@@ -24,9 +27,11 @@ module Fluent
       Fluent::Plugin.register_output("azureoms", self)
 
       helpers :thread # for try_write
-
+      
       config_param :workspace, :string
       config_param :key, :string
+      config_param :timestamp_field, :string, default: ""
+      config_param :log_name, :string, default: "AzureLog"
 
       def configure(conf)
         auth_string = "Authorization: SharedKey #{workspace}:#{key}"
@@ -42,16 +47,17 @@ module Fluent
         true
       end
 
-
-
       def process(tag, es)
         print "Writing single record set (synchronous)"
         es.each do | time, record| 
-          log.debug "Writing record #{record.inspect}"          
+          log.debug "Writing record #{record.inspect}"   
+
           # TODO - publish event
+          send_data(customer_id, shared_key, record, log_name )        
+          
         puts "Encoded signature is"
         puts encoded_signature
-s
+
         end 
       end 
 
@@ -60,48 +66,72 @@ s
         log.debug "Writing buffered record set (synchronous)"
         log.debug "writing data to file", chunk_id: dump_unique_id_hex(chunk.unique_id)
 
+        content = ""
+
         chunk.each do |time, record|
           log.debug "Writing record #{record.inspect}"    
+
+          # TODO - check size of content buffer and flush when it approaches 
+          # watermark
         end
+
+        # TODO - temp. Just send everything
+        send_data(customer_id, shared_key, content, log_name)     
       end
 
       def format(tag, record, time)
         [tag, time, record].to_json
       end
 
-      def send_data(json_str)
-
-        # Signature and headers
-        
+      def send_data(customer_id, shared_key, content, log_type) 
+          current_time = Time.now.utc
+          signature = build_signature(
+            shared_key, current_time, length(content), 
+            "POST", "application/json", "/api/logs")
+          publish_data(log_name, signature, current_time, content)
       end
 
-      def build_signature(customer_id, shared_key, date, content_length, method, content_type, resource)
-        rfc1123date = date.strftime("%a, %d %b %Y %H:%M:%S GMT")
-        string_to_hash = "#{method}\n#{content_length}\n#{content_type}\nx-ms-date: #{rfc1123date}\n#{resource}"
-        
+      def publish_data(log_name, signature, time, json)
+        url = "https://#{workspace}.ods.opinsights.azure.com/api/logs?api-version=2016-04-01"
+        uri = URI url
+
+        rfc1123date = time.utc.strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+        response = Net::HTTP.start(uri.hostname, uri.port, 
+          :use_ssl => uri.scheme == 'https') do |http|
+
+          req = Net::HTTP::Post.new(uri.to_s)
+          req.body = json
+          
+          # Signature and headers
+          req['Content-Type'] = 'application/json'
+          req['Log-Type'] = log_name
+          req['Authorization'] = signature
+          req['x-ms-date'] = rfc1123date
+
+          http.request(req)          
+        end
+
+        case response 
+        when Net::HTTPSuccess
+          puts "Success!"          
+        else
+          # TODO - throw error
+          puts "Failed to send data"          
+        end 
+      end
+  
+      def build_signature(shared_key, date, content_length, method, content_type, resource)
+        rfc1123date = date.utc.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        string_to_hash = "#{method}\n#{content_length}\n#{content_type}\nx-ms-date:#{rfc1123date}\n#{resource}"
+        puts string_to_hash
         decoded_key = Base64.decode64(shared_key)
-        #p decoded_key
-
-        p shared_key.inspect
-        p shared_key
-        p decoded_key.inspect
-        p decoded_key
-
-        secure_hash = OpenSSL::HMAC.digest('SHA256', shared_key, string_to_hash)
+        secure_hash = OpenSSL::HMAC.digest('SHA256', decoded_key, string_to_hash)
+        
         encoded_hash = Base64.encode64(secure_hash).strip()
-        authorization = "SharedKey #{customer_id}:#{encoded_hash}"
+        authorization = "SharedKey #{workspace}:#{encoded_hash}"
         return authorization
-      end
-
-      # def build_signature(customer_id, shared_key, date, content_length, method, content_type, resource):
-      #   x_headers = 'x-ms-date:' + date
-      #   string_to_hash = method + "\n" + str(content_length) + "\n" + content_type + "\n" + x_headers + "\n" + resource
-      #   bytes_to_hash = bytes(string_to_hash).encode('utf-8')  
-      #   decoded_key = base64.b64decode(shared_key)
-      #   encoded_hash = base64.b64encode(hmac.new(decoded_key, bytes_to_hash, digestmod=hashlib.sha256).digest())
-      #   authorization = "SharedKey {}:{}".format(customer_id,encoded_hash)
-      #   return authorization
-      # end
+      end    
     end
   end
 end

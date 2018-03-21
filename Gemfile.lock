@@ -8,6 +8,7 @@ GEM
   remote: https://rubygems.org/
   specs:
     cool.io (1.5.3)
+    cool.io (1.5.3-x64-mingw32)
     dig_rb (1.0.1)
     fluentd (1.1.2)
       cool.io (>= 1.4.5, < 2.0.0)
@@ -22,6 +23,7 @@ GEM
       yajl-ruby (~> 1.0)
     http_parser.rb (0.6.0)
     msgpack (1.2.4)
+    msgpack (1.2.4-x64-mingw32)
     power_assert (1.1.1)
     rake (12.3.0)
     serverengine (2.0.6)
@@ -39,6 +41,7 @@ GEM
 
 PLATFORMS
   ruby
+  x64-mingw32
 
 DEPENDENCIES
   bundler (~> 1.14)
