@@ -16,6 +16,7 @@
 require "fluent/plugin/output"
 require "date"
 require "base64"
+require "openssl"
 
 module Fluent
   module Plugin
@@ -25,11 +26,11 @@ module Fluent
       helpers :thread # for try_write
 
       config_param :workspace, :string
-      config_param :signature, :string
+      config_param :key, :string
 
       def configure(conf)
-        auth_string = "Authorization: SharedKey #{workspace}:#{signature}"
-        logger.debug("Authorization string is #{auth_string}")
+        auth_string = "Authorization: SharedKey #{workspace}:#{key}"
+        log.debug("Authorization string is #{auth_string}")
 
         super
       end
@@ -47,7 +48,10 @@ module Fluent
         print "Writing single record set (synchronous)"
         es.each do | time, record| 
           log.debug "Writing record #{record.inspect}"          
-          # TODO - publish events
+          # TODO - publish event
+        puts "Encoded signature is"
+        puts encoded_signature
+s
         end 
       end 
 
@@ -68,15 +72,23 @@ module Fluent
       def send_data(json_str)
 
         # Signature and headers
-        rfc1123date = DateTime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
-
+        
       end
 
       def build_signature(customer_id, shared_key, date, content_length, method, content_type, resource)
-        string_to_hash = "#{method}\n#{content_length}\n#{content_type}\nx-ms-date: #{date}\n#{resource}"
-        decoded_key = Base64.decode(shared_key)
-        secure_hash = OpenSSL::HMAC.hexdigest('SHA256', decoded_key, string_to_hash)
-        encoded_hash = Base64.encode(secure_hash)
+        rfc1123date = date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        string_to_hash = "#{method}\n#{content_length}\n#{content_type}\nx-ms-date: #{rfc1123date}\n#{resource}"
+        
+        decoded_key = Base64.decode64(shared_key)
+        #p decoded_key
+
+        p shared_key.inspect
+        p shared_key
+        p decoded_key.inspect
+        p decoded_key
+
+        secure_hash = OpenSSL::HMAC.digest('SHA256', shared_key, string_to_hash)
+        encoded_hash = Base64.encode64(secure_hash).strip()
         authorization = "SharedKey #{customer_id}:#{encoded_hash}"
         return authorization
       end
