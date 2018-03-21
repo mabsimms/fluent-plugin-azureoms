@@ -26,17 +26,12 @@ module Fluent
     class AzureomsOutput < Fluent::Plugin::Output
       Fluent::Plugin.register_output("azureoms", self)
 
-      helpers :thread # for try_write
-      
       config_param :workspace, :string
       config_param :key, :string
       config_param :timestamp_field, :string, default: ""
       config_param :log_name, :string, default: "AzureLog"
 
       def configure(conf)
-        auth_string = "Authorization: SharedKey #{workspace}:#{key}"
-        log.debug("Authorization string is #{auth_string}")
-
         super
       end
 
@@ -80,6 +75,7 @@ module Fluent
       end
 
       def format(tag, record, time)
+        # TODO - appropriately format the records for log analytics
         [tag, time, record].to_json
       end
 
