@@ -49,7 +49,6 @@ class AzureomsOutputTest < Test::Unit::TestCase
   test "send_data" do
     d = create_driver(conf)
     response = d.instance.send_data(log_name, direct_conf['key'], json_string, log_name)
-    pp response
   end
 
   test "emit" do

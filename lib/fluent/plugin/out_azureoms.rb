@@ -50,14 +50,11 @@ module Fluent
       def process(tag, es)
         print "Writing single record set (synchronous)\n"
         es.each do |time, record|           
-          p record 
-          p record.methods
-          p record.to_s
-
-          # TODO - publish event
           # Convert record into a JSON body payload for OMS
+          record[:timestamp] = Time.at(time).iso8601          
 
-          send_data(workspace, key, record, log_name)        
+          # Publish event
+          send_data(workspace, key, record.to_json, log_name)        
         end 
       end 
 
@@ -90,13 +87,6 @@ module Fluent
           send_data(workspace, key, elements.to_json, log_name)     
         end        
       end
-
-      # def format(tag, record, time)
-      #   # TODO - appropriately format the records for log analytics
-      #   encoded_string = [tag, time, record].to_json
-      #   puts encoded_string
-      #   return encoded_string
-      # end
 
       def send_data(customer_id, shared_key, content, log_type)        
           current_time = Time.now.utc
