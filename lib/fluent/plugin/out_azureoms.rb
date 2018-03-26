@@ -24,26 +24,27 @@ require "json"
 module Fluent
   module Plugin
     class AzureomsOutput < Fluent::Plugin::Output
+      
+      helpers :event_emitter, :compat_parameters, :record_accessor
+
       Fluent::Plugin.register_output("azureoms", self)
 
       config_param :workspace, :string
       config_param :key, :string, secret: true
-      config_param :timestamp_field, :string, default: ""
+      config_param :timestamp_field, :string, default: "timestamp"
       config_param :log_name, :string, default: "AzureLog"
 
       def configure(conf)
         # This also calls config_param (don't access configuration parameters before
         # calling super)
-        super
-
-        # Attempt to load workspace and 
+        super        
       end
 
       # This output plugin uses the raw HTTP data collector
       # API per https://docs.microsoft.com/en-us/azure/log-analytics/log-analytics-data-collector-api
 
       def prefer_buffered_processing 
-        false
+        true
       end
 
       def process(tag, es)
@@ -64,31 +65,40 @@ module Fluent
       def write(chunk) 
         log.debug "Writing buffered record set (synchronous)"
         log.debug "writing data to file", chunk_id: dump_unique_id_hex(chunk.unique_id)
-
-        content = ""
-
-        p chunk
-        puts chunk.methods
-
+        
+        elements = Array.new
+        
         chunk.each do |time, record|
           log.debug "Writing record #{record.inspect}"    
 
+          # Fold the timestamp into the record
+          record[:timestamp] = Time.at(time).iso8601
+
+          # Append the record to the content in the appropriate format
+          elements.push(record)
+
           # TODO - check size of content buffer and flush when it approaches 
           # watermark
+          if false 
+            log.debug "Elements buffer approaching max send size; flushing TODO"    
+            send_data(workspace, key, elements.to_json, log_name)     
+            elements.clear
+          end 
         end
 
-        # TODO - temp. Just send everything
-        send_data(customer_id, shared_key, content, log_name)     
+        if elements.length > 0
+          send_data(workspace, key, elements.to_json, log_name)     
+        end        
       end
 
-      def format(tag, record, time)
-        # TODO - appropriately format the records for log analytics
-        encoded_string = [tag, time, record].to_json
-        puts encoded_string
-        return encoded_string
-      end
+      # def format(tag, record, time)
+      #   # TODO - appropriately format the records for log analytics
+      #   encoded_string = [tag, time, record].to_json
+      #   puts encoded_string
+      #   return encoded_string
+      # end
 
-      def send_data(customer_id, shared_key, content, log_type) 
+      def send_data(customer_id, shared_key, content, log_type)        
           current_time = Time.now.utc
           signature = build_signature(
             shared_key, current_time, content.length, 
@@ -114,15 +124,16 @@ module Fluent
           req['Authorization'] = signature
           req['x-ms-date'] = rfc1123date
       
+          log.debug "Publishing record of length #{req.body.length} to OMS workspace #{workspace}"    
           http.request(req)          
         end
 
         case response 
         when Net::HTTPSuccess
-          puts "Success!"          
+          log.debug "Successfully published record of length #{json.length} to OMS workspace #{workspace}"                 
         else
           # TODO - throw error
-          puts "Failed to send data"  
+          log.warn "Could not publish record of length #{json.length} to OMS workspace #{workspace} because #{response}"
         end 
         response
       end
@@ -132,14 +143,7 @@ module Fluent
         string_to_hash = "#{method}\n#{content_length}\n#{content_type}\nx-ms-date:#{rfc1123date}\n#{resource}"        
         decoded_key = Base64.decode64(shared_key)
         secure_hash = OpenSSL::HMAC.digest('SHA256', decoded_key, string_to_hash)
-        
-        puts "string to hash"
-        pp string_to_hash
-        puts "shared key"
-        pp shared_key
-        puts "decoded key"
-        pp decoded_key
-
+              
         encoded_hash = Base64.encode64(secure_hash).strip()
         authorization = "SharedKey #{workspace}:#{encoded_hash}"
       
