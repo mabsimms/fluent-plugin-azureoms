@@ -6,6 +6,7 @@ Gem::Specification.new do |spec|
   spec.version = "0.1.0"
   spec.authors = ["Mark Simms"]
   spec.email   = ["masimms@microsoft.com"]
+  #spec.git     = "git://www.github.com/mabsimms/fluent-plugin-azureoms.git"
 
   spec.summary       = "Fluentd output plugin for Azure Log Analytics"
   spec.description   = "Fluentd output plugin for Azure Log Analytics"

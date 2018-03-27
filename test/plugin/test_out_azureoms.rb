@@ -8,14 +8,9 @@ require "pp"
 
 class AzureomsOutputTest < Test::Unit::TestCase
   include Fluent::Test::Helpers
-
   
   json_string = '[{"DemoField1":"DemoValue1","DemoField2":"DemoValue2"},{"DemoField3":"DemoValue3","DemoField4":"DemoValue4"}]'
   log_name = "DemoExample";
-
-  hashed_string = '3oXy0IjaKA/V2/Kx+/BlXx7y6tvLYMM8/jwpWBO3c+c='
-  signature = 'SharedKey 424b6a54-6de2-44b5-9768-04497fb2c7e6:1aHwzUHSJ6Ok4ExaKG3i7Opgzy/YqxcjqXH58rssu+I='
-  time = Time::strptime("21-03-2018 00:12:10+00:00", "%d-%m-%Y %H:%M:%S%z")
 
   content_length = json_string.length
   method = "POST"
