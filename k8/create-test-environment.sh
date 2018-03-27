@@ -86,9 +86,25 @@ deploy_cluster() {
     kubectl get nodes
 }
 
-configure_kubectl() { 
-    echo "TODO"
+configure_logging() { 
+    echo "Configuring K8 cluster"
+
+    # Create the service account and role bindings - TODO - create custom clusterrole
+    kubectl create serviceaccount fluentd-es --namespace kube-system
+    kubectl create clusterrolebinding fluentd-es \
+        --clusterrole=system:heapster-with-nanny \
+        --serviceaccount=kube-system:fluentd-es \
+        --namespace kube-system
+
+    # Deploy fluentd for moving system logs to ELK
+    kubectl create -f supporting/fluentd-configmap.yaml
+    kubectl create -f supporting/fluentd-service.yaml
+
+    # Deploy heapster for pulling k8 metrics and api-controller
+    # events to OMS - TODO
+    #kubectl apply -f supporting/heapster-to-influx.yaml
 }
+
 
 main() { 
     # Set up the cluster
