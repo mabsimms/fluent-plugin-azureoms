@@ -29,15 +29,25 @@ module Fluent
 
       Fluent::Plugin.register_output("azureoms", self)
 
+      DEFAULT_BUFFER_TYPE = "memory"
+
       config_param :workspace, :string
       config_param :key, :string, secret: true
       config_param :timestamp_field, :string, default: "timestamp"
-      config_param :log_name, :string, default: "AzureLog"
+
+      config_section :buffer do
+        config_set_default :@type, DEFAULT_BUFFER_TYPE
+        config_set_default :chunk_keys, ['tag']
+        config_set_default :timekey_use_utc, true
+      end
 
       def configure(conf)
         # This also calls config_param (don't access configuration parameters before
         # calling super)
-        super        
+        super       
+
+        # Require chunking by tag keys
+        raise Fluent::ConfigError, "'tag' in chunk_keys is required." if not @chunk_key_tag
       end
 
       # This output plugin uses the raw HTTP data collector
@@ -54,7 +64,7 @@ module Fluent
           record[:timestamp] = Time.at(time).iso8601          
 
           # Publish event
-          send_data(workspace, key, record.to_json, log_name)        
+          send_data(workspace, key, record.to_json, tag)        
         end 
       end 
 
@@ -62,7 +72,9 @@ module Fluent
       def write(chunk) 
         log.debug "Writing buffered record set (synchronous)"
         log.debug "writing data to file", chunk_id: dump_unique_id_hex(chunk.unique_id)
-        
+        log.debug "writing data to log type", chunk.metadata.tag
+
+        tag = chunk.metadata.tag
         elements = Array.new
         
         chunk.each do |time, record|
@@ -77,18 +89,19 @@ module Fluent
           # TODO - check size of content buffer and flush when it approaches 
           # watermark
           if false 
-            log.debug "Elements buffer approaching max send size; flushing TODO"    
-            send_data(workspace, key, elements.to_json, log_name)     
+            log.debug "Elements buffer approaching max send size; flushing #{elements.length} to logname #{tag}"    
+            send_data(workspace, key, elements.to_json, tag)     
             elements.clear
           end 
         end
 
         if elements.length > 0
-          send_data(workspace, key, elements.to_json, log_name)     
+          log.debug "Flushing #{elements.length} to logname #{tag}"    
+          send_data(workspace, key, elements.to_json, tag)     
         end        
       end
 
-      def send_data(customer_id, shared_key, content, log_type)        
+      def send_data(customer_id, shared_key, content, log_name)        
           current_time = Time.now.utc
           signature = build_signature(
             shared_key, current_time, content.length, 
