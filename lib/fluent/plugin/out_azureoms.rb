@@ -59,12 +59,13 @@ module Fluent
 
       def process(tag, es)
         print "Writing single record set (synchronous)\n"
+        log_name = tag_to_log_name(chunk.metadata.tag)
         es.each do |time, record|           
           # Convert record into a JSON body payload for OMS
           record[:timestamp] = Time.at(time).iso8601          
 
           # Publish event
-          send_data(workspace, key, record.to_json, tag)        
+          send_data(workspace, key, record.to_json, log_name)        
         end 
       end 
 
@@ -72,9 +73,9 @@ module Fluent
       def write(chunk) 
         log.debug "Writing buffered record set (synchronous)"
         log.debug "writing data to file", chunk_id: dump_unique_id_hex(chunk.unique_id)
-        log.debug "writing data to log type", chunk.metadata.tag
 
-        tag = chunk.metadata.tag
+        log_name = tag_to_log_name(chunk.metadata.tag)
+        log.debug "writing data to log type ", log_name
         elements = Array.new
         
         chunk.each do |time, record|
@@ -89,16 +90,24 @@ module Fluent
           # TODO - check size of content buffer and flush when it approaches 
           # watermark
           if false 
-            log.debug "Elements buffer approaching max send size; flushing #{elements.length} to logname #{tag}"    
-            send_data(workspace, key, elements.to_json, tag)     
+            log.debug "Elements buffer approaching max send size; flushing #{elements.length} to logname #{log_name}"    
+            send_data(workspace, key, elements.to_json, log_name) 
             elements.clear
           end 
         end
 
         if elements.length > 0
-          log.debug "Flushing #{elements.length} to logname #{tag}"    
-          send_data(workspace, key, elements.to_json, tag)     
+          log.debug "Flushing #{elements.length} to logname #{log_name}"
+          send_data(workspace, key, elements.to_json, log_name)     
         end        
+      end
+
+      def tag_to_log_name(tag)
+        if tag.include? '.' 
+          tags = tag.split('.') 
+          return tags[-1]
+        end
+        return tag
       end
 
       def send_data(customer_id, shared_key, content, log_name)        
@@ -136,7 +145,7 @@ module Fluent
           log.debug "Successfully published record of length #{json.length} to OMS workspace #{workspace}"                 
         else
           # TODO - throw error
-          log.warn "Could not publish record of length #{json.length} to OMS workspace #{workspace} because #{response}"
+          log.warn "Could not publish record of length #{json.length} to OMS workspace #{workspace} because #{response.body}"
         end 
         response
       end
